@@ -1,8 +1,8 @@
-# Backend/services/monitor.py
 import psutil
 import pynvml
 import logging
 from repositories.database import DataBase
+from dtos.metrics import MetricsResponse
 
 try:
     pynvml.nvmlInit()
@@ -13,10 +13,10 @@ except pynvml.NVMLError:
 
 class HardwareMonitor:
     @staticmethod
-    def get_metrics(db_instance: DataBase) -> dict:
+    def get_metrics(db_instance: DataBase) -> MetricsResponse:
         """
         Lấy thông số CPU, RAM và VRAM hiện tại.
-        Trả về dict chuẩn bị cho Pydantic validate.
+        Trả về MetricsResponse
         """
         # 1. CPU Usage (%)
         # interval=None để lấy tức thời (non-blocking), không làm chậm API
@@ -36,13 +36,13 @@ class HardwareMonitor:
             except pynvml.NVMLError as e:
                 logging.error(f"Lỗi đọc VRAM: {e}")
 
-        return {
-            "cpu": cpu_usage,
-            "ram": ram_used_gb,
-            "gpu_vram": gpu_vram_gb,
-            "throughput": 0,
-            "dataset_stats": db_instance.get_stats()
-        }
+        return MetricsResponse(
+            cpu=cpu_usage,
+            ram=ram_used_gb,
+            gpu_vram=gpu_vram_gb,
+            throughput=0,
+            dataset_stats=db_instance.get_stats()
+        )
     
 if __name__ == "__main__":
     db = DataBase()

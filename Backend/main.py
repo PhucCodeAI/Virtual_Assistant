@@ -1,9 +1,9 @@
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.v1.chat import chat_router
-from api.v1.metrics import metrics_router
-from api.v1.database import db_router
+from controller.v1.chat import chat_router
+from controller.v1.metrics import metrics_router
+from controller.v1.utils import utils_router
 from config import configs
 from utils.logger import setup_logging, get_logger
 
@@ -18,18 +18,18 @@ app = FastAPI(
 
 app.include_router(chat_router, prefix="/v1", tags=["Chat"])
 app.include_router(metrics_router, prefix="/v1", tags=["Monitor"])
-app.include_router(db_router, tags=["Database"])
+app.include_router(utils_router, tags=["Utils"])
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=configs.server.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict:
     """
     Docstring: Hàm kiểm tra sức khỏe hệ thống.
     """

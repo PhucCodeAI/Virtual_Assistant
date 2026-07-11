@@ -5,14 +5,24 @@ cors_origins = ["http://localhost:5173"]
 
 [llm_engine]
 model_path = "./static/models/Qwen3.5-2B-UD-Q4_K_XL.gguf"
-n_ctx = 4096
-n_gpu_layers = -1 
-temperature = 0.2 # Để thấp để model code và xuất JSON chính xác, không bị "ngáo"
-max_tokens = 1024 # Giới hạn output mỗi lần sinh để tránh treo máy
+n_ctx = 12000
+n_gpu_layers = -1
+max_tokens = 5000
+max_retries = 3
 
 [database]
-sqlite_path = "data/agent_memory.db"
+db_path = "data/database/virtual_assistant.db"
 
 [scraper]
 timeout_seconds = 10
 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+[embedding]
+model_name = "Alibaba-NLP/gte-multilingual-base"
+cache_path = "./static/models"
+batch_size = 32
+max_length = 1024
+dim = 768
+
+[vectordb]
+vdb_path = "data/vectordb"

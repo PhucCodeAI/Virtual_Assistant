@@ -2,12 +2,6 @@ import tomli
 from pathlib import Path
 from pydantic import BaseModel
 
-# Đường dẫn tuyệt đối đến file config.toml
-CONFIG_PATH = Path(__file__).parent / "config.toml"
-
-# Đọc file TOML bằng thư viện chuẩn của Python (Không cần cài thêm)
-with open(CONFIG_PATH, "rb") as f:
-    _config_data = tomli.load(f)
 
 class ServerConfig(BaseModel):
     host: str
@@ -18,18 +12,30 @@ class LLMConfig(BaseModel):
     model_path: str
     n_ctx: int
     n_gpu_layers: int
-    temperature: float
     max_tokens: int
+    max_retries: int
 
 class DatabaseConfig(BaseModel):
-    sqlite_path: str
+    db_path: str
 
-class ScraperConfig(BaseModel):
-    timeout_seconds: int
-    user_agent: str
+class EmbeddingConfig(BaseModel):
+    model_name: str
+    cache_path: str
+    max_length: int
+    dim: int
+
+class VectorDBConfig(BaseModel):
+    vdb_path: str
 
 class AppConfig(BaseModel):
     llm_engine: LLMConfig
     server: ServerConfig
+    embedding: EmbeddingConfig
+    vectordb: VectorDBConfig
+    database: DatabaseConfig
 
+CONFIG_PATH = Path(__file__).parent / "config.toml"
+
+with open(CONFIG_PATH, "rb") as f:
+    _config_data = tomli.load(f)
 configs = AppConfig(**_config_data)
