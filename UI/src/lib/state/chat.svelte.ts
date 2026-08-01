@@ -16,7 +16,7 @@ export class ChatService {
     mode = $state<string>("chat");
     temperature = $state<number>(0.5);
     topP = $state<number>(0.9);
-    systemPrompt = $state("Bạn là Trợ lý ảo cá nhân chuyên nghiệp. Tuân thủ nghiêm ngặt các quy tắc phản hồi sau:\n1. Đi thẳng vào vấn đề, trả lời ngắn gọn, súc tích và dễ hiểu. Tuyệt đối không giải thích dông dài.\n2. Luôn trình bày bằng định dạng Markdown (tiêu đề, danh sách, bảng biểu, khối code) để tối ưu hóa trải nghiệm đọc.\n3. Không bịa đặt thông tin. Nếu thiếu dữ liệu hoặc không chắc chắn, hãy thẳng thắn trả lời: 'Xin lỗi, tôi không biết.'");
+    systemPrompt = $state("Bạn là Trợ lý ảo cá nhân chuyên nghiệp. Tuân thủ nghiêm ngặt các quy tắc phản hồi sau:\n1. Đi thẳng vào vấn đề, trả lời ngắn gọn, súc tích và dễ hiểu. Tuyệt đối không giải thích dông dài.\n2. Luôn trình bày bằng định dạng Markdown để tối ưu hóa trải nghiệm đọc.\n3. Không bịa đặt thông tin. Nếu thiếu dữ liệu hoặc không chắc chắn, hãy thẳng thắn trả lời: 'Xin lỗi, tôi không biết.'");
 
     // 3. FACADE PATTERN: PROXY GETTER/SETTER CHO UI (Giữ nguyên cấu trúc gọi từ UI)
     // - Proxy Metrics
@@ -85,10 +85,8 @@ export class ChatService {
         const userImg = this.selectedImage; 
         const sysPrompt = this.systemPrompt; 
         
-        // ĐÃ VÁ LỖI CHÍ MẠNG: Không push system prompt vào mảng messages gốc của UI nữa
         this.messages.push({ role: 'user', content: userText, image: userImg }); 
         
-        // 1. Ánh xạ mảng UI sang cấu trúc API
         const mappedMessages: APIMessage[] = this.messages.map(msg => { 
             if (msg.role === 'assistant') return { role: 'assistant', content: msg.content }; 
             if (msg.role === 'system') return { role: 'system', content: msg.content }; 
@@ -104,12 +102,11 @@ export class ChatService {
             return { role: 'user', content: msg.content }; 
         }); 
 
-        // 2. INJECT SYSTEM PROMPT VÀO ĐẦU MẢNG ĐỂ GỬI ĐI (LUÔN LÀ INDEX 0) [3]
         const apiMessages: APIMessage[] = [];
         if (sysPrompt && this.mode === 'chat') {
             apiMessages.push({ role: 'system', content: sysPrompt });
         }
-        apiMessages.push(...mappedMessages); // Nối tiếp lịch sử hội thoại sạch
+        apiMessages.push(...mappedMessages);
 
         this.currentInput = ""; 
         this.selectedImage = null; 
@@ -127,11 +124,12 @@ export class ChatService {
         const aiIndex = this.messages.length - 1; 
 
         try {
-            const URL = `${API_BASE_URL}/v1/${this.mode === 'chat' ? 'chat' : `agent/${this.mode}`}`;
+            const URL = `${API_BASE_URL}/v1/${this.mode === 'chat' ? 'chat' : `agent`}`;
             const payload: any = { 
                 messages: apiMessages,
                 temperature: this.temperature, 
-                top_p: this.topP 
+                top_p: this.topP,
+                mode: this.mode
             };
 
             if (this.mode === 'coding') {

@@ -9,15 +9,15 @@ class VectorDB:
     Embedded VectorDB using LanceDB.
     Disk-based storage, low RAM consumption, built-in search algorithms.
     """
-    def __init__(self) -> None:
+    def __init__(self, embedding: EmbeddingEngine=None) -> None:
         """
         Initialize the VectorDB connection and table using configurations.
 
         -Input: None
         -Output: None
         """
-        self.db = lancedb.connect(configs.vdb.vdb_path)
-        self.embedding = EmbeddingEngine()
+        self.db = lancedb.connect(configs.vectordb.vector_db_path)
+        self.embedding = embedding
         
         self.table_name = "agent_knowledge"
         self.table = self._init_table()

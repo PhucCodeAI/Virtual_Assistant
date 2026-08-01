@@ -1,14 +1,15 @@
 from workflows.base_agent import BaseAgent
 from workflows.coding_agent.prompts import CodingPrompt
 from services.llm_engine import LLMEngine
-from dtos.coding_agent import CodingRequets, PlaningResponse
+from dtos.orchestrator import AgentRequest
+from dtos.response import PlaningResponse
 
 class CodingAgent():
-    def __init__(self) -> None:
+    def __init__(self, llm=None) -> None:
         self.prompts = CodingPrompt()
-        self.llm = LLMEngine()
+        self.llm = llm
 
-    def planing(self, req: CodingRequets) -> PlaningResponse:
+    def planing(self, req: AgentRequest) -> PlaningResponse:
         system_message = [
             {
                 "role": "system",
@@ -22,13 +23,6 @@ class CodingAgent():
 
         temperature = getattr(req, 'temperature', 0.1)
         top_p = getattr(req, 'top_p', 0.95)
-
-        # return {
-        #     "messages": full_messages,
-        #     "response_model": PlaningResponse,
-        #     "temperature": temperature,
-        #     "top_p": top_p
-        # }
 
         return self.llm.generate_structured(
             messages=full_messages,

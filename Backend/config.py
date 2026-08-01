@@ -3,6 +3,12 @@ from pathlib import Path
 from pydantic import BaseModel
 
 
+class SetupConfig(BaseModel):
+    llm_repo_id: str
+    file_name: str
+    embedding_repo: str
+    model_folder: str
+
 class ServerConfig(BaseModel):
     host: str
     port: int
@@ -19,20 +25,24 @@ class DatabaseConfig(BaseModel):
     db_path: str
 
 class EmbeddingConfig(BaseModel):
-    model_name: str
-    cache_path: str
+    batch_size: int
     max_length: int
     dim: int
 
 class VectorDBConfig(BaseModel):
-    vdb_path: str
+    vector_db_path: str
+
+class GraphDBConfig(BaseModel):
+    graph_db_path: str
 
 class AppConfig(BaseModel):
+    setup: SetupConfig
     llm_engine: LLMConfig
     server: ServerConfig
     embedding: EmbeddingConfig
     vectordb: VectorDBConfig
     database: DatabaseConfig
+    graphdb: GraphDBConfig
 
 CONFIG_PATH = Path(__file__).parent / "config.toml"
 

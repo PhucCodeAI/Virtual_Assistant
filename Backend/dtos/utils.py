@@ -1,6 +1,11 @@
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
 
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
 class CodeBaseRequest(BaseModel):
     path: str
     extensions: list[str]

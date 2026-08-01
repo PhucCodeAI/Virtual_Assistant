@@ -149,7 +149,6 @@ def _generate_codebase_tree(
     _build_text_tree(root_abs_path)
     return "\n".join(output_lines)
 
-
 def _get_optimal_threads() -> int:
     """
     Docstring: Tự động tính toán số lượng threads tối ưu cho bộ thực thi llama.cpp.
@@ -172,7 +171,20 @@ def _get_optimal_threads() -> int:
         
     except Exception:
         return 4
-    
+
+def formart_mesage(system_prompt: str=None, prompt: str=None, assistance: str=None):
+    message = []
+
+    if system_prompt and system_prompt.strip():
+        message.append({"role": "system", "content": system_prompt.strip()})
+    if prompt and prompt.strip():
+        message.append({"role": "user", "content": prompt.strip()})
+    if assistance and assistance.strip():
+        message.append({"role": "assistant", "content": assistance.strip()})
+
+    return message
+
+
 if __name__ == "__main__":
     # Đường dẫn thư mục hiện tại của bạn
     path = "./"

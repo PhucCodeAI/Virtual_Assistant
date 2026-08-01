@@ -52,4 +52,3 @@ class CodingResponse(BaseModel):
     create_file: list[CreateFile] | None = Field(None, description="Các file mới cần tạo")
     shell_command: list[ShellCommand] | None = Field(None, description="Các lệnh terminal cần chạy")
     desc: str | None = Field(None, description="Tổng kết chung")
-    

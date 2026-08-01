@@ -1,9 +1,9 @@
 from typing import Any
 from abc import ABC, abstractmethod
-from dtos.chat_request import ChatRequest
 from services.llm_engine import LLMEngine
-from dtos.general_agent import PlaningResponse
+from dtos.response import PlaningResponse
 from .general_prompts import GeneralPrompt
+from dtos.utils import ChatMessage
 
 class BaseAgent(ABC):
     """
@@ -20,24 +20,21 @@ class PlaningAgent(BaseAgent):
     """
     Agent for planning tasks.
     """
-    def __init__(self) -> None:
+    def __init__(self, llm=None) -> None:
         self.prompts = GeneralPrompt()
-        self.llm = LLMEngine()
+        self.llm = llm
 
-    def run(self, req: ChatRequest) -> PlaningResponse:
+    def run(self, content: str) -> PlaningResponse:
         system_message = [
             {
                 "role": "system",
-                "content": self.prompts.planing(),
+                "content": self.prompts.PLANING,
+            },
+            {
+                
             }
-        ]
-        
-        user_history = req.messages if hasattr(req, 'messages') else req.model_dump().get("messages", [])
-        
-        full_messages = system_message + user_history
 
-        temperature = getattr(req, 'temperature', 0.5)
-        top_p = getattr(req, 'top_p', 0.95)
+        ]
 
         return self.llm.generate_structured(
             messages=full_messages,

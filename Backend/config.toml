@@ -1,7 +1,15 @@
+[setup]
+llm_repo_id = "unsloth/Qwen3.5-2B-GGUF"
+file_name = "Qwen3.5-2B-UD-Q4_K_XL.gguf"
+embedding_repo = "Alibaba-NLP/gte-multilingual-base"
+model_folder = "static/models"
+
+
 [server]
 host = "0.0.0.0"
 port = 8000
 cors_origins = ["http://localhost:5173"]
+
 
 [llm_engine]
 model_path = "./static/models/Qwen3.5-2B-UD-Q4_K_XL.gguf"
@@ -10,19 +18,19 @@ n_gpu_layers = -1
 max_tokens = 5000
 max_retries = 3
 
-[database]
-db_path = "data/database/virtual_assistant.db"
 
-[scraper]
-timeout_seconds = 10
-user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+[database]
+db_path = "./storage/database/database.db"
+
 
 [embedding]
-model_name = "Alibaba-NLP/gte-multilingual-base"
-cache_path = "./static/models"
 batch_size = 32
 max_length = 1024
 dim = 768
 
+
 [vectordb]
-vdb_path = "data/vectordb"
+vector_db_path = "./storage/vectordb"
+
+[graphdb]
+graph_db_path = "./storage/graph/graph_db.pkl.gz"

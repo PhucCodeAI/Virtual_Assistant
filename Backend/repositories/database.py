@@ -1,7 +1,11 @@
-import sqlite3
-import uuid
 import os
-from typing import Optional, Dict, List, Any
+import uuid
+import sqlite3
+from typing import Optional, Any
+from contextlib import contextmanager
+from collections.abc import Generator
+from config import configs
+
 
 class DataBase:
     """
@@ -10,16 +14,26 @@ class DataBase:
     Không sử dụng ORM để đảm bảo tốc độ truy vấn (Latency < 5ms).
     """
     
-    def __init__(self, db_path: str = "database/virtual_assistant.db"):
-        self.db_path = db_path
+    def __init__(self):
+        self.db_path = configs.database.db_path
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self._init_db()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        """Tạo kết nối DB và cấu hình trả về dạng dict (sqlite3.Row)."""
+    @contextmanager
+    def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Tạo kết nối DB và cấu hình trả về dạng dict."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        return conn
+
+        try:
+            yield conn
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
+
 
     def _init_db(self):
         """Khởi tạo schema nếu chưa tồn tại."""
@@ -37,6 +51,7 @@ class DataBase:
             """)
             conn.commit()
 
+
     # ==========================================
     # CHUẨN CRUD (CREATE - READ - UPDATE - DELETE)
     # ==========================================
@@ -52,14 +67,14 @@ class DataBase:
             conn.commit()
         return record_id
 
-    def read(self, record_id: str) -> Optional[Dict[str, Any]]:
+    def read(self, record_id: str) -> Optional[dict[str, Any]]:
         """[R] Đọc một bản ghi theo ID."""
         with self._get_connection() as conn:
             cursor = conn.execute("SELECT * FROM interactions WHERE id = ?", (record_id,))
             row = cursor.fetchone()
             return dict(row) if row else None   
 
-    def read_all(self, limit: int = 10, offset: int = 0, status: Optional[str] = None) -> List[Dict[str, Any]]:
+    def read_all(self, limit: int = 10, offset: int = 0, status: Optional[str] = None) -> list[dict[str, Any]]:
         """[R] Đọc danh sách bản ghi (Hỗ trợ phân trang và lọc theo status)."""
         query = "SELECT * FROM interactions"
         params = []
@@ -87,7 +102,6 @@ class DataBase:
         if not kwargs:
             return False
             
-        # Tạo câu lệnh SET động dựa trên kwargs
         set_clause = ", ".join([f"{key} = ?" for key in kwargs.keys()])
         values = list(kwargs.values())
         values.append(record_id)
@@ -106,12 +120,8 @@ class DataBase:
             conn.commit()
             return cursor.rowcount > 0
 
-    # ==========================================
-    # NGHIỆP VỤ MỞ RỘNG (BUSINESS LOGIC)
-    # ==========================================
-
-    def get_stats(self) -> Dict[str, int]:
-        """Lấy thống kê realtime để hiển thị lên UI (Gamification)."""
+    def get_stats(self) -> dict[str, int]:
+        """Lấy thống kê realtime để hiển thị biểu đồ."""
         with self._get_connection() as conn:
             cursor = conn.execute("""
                 SELECT 

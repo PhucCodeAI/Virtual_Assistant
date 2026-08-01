@@ -1,11 +1,14 @@
+# Backend service
 test.*
 Backend/static/models
-Backend/database
+Backend/storage
 __pycache__/
 logs/
 .venv/
+.pytest_cache/
 
 
+# UI service
 UI/.svelte-kit
 UI/.vscode
 UI/.prettierignore
