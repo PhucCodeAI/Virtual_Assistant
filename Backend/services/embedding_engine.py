@@ -11,10 +11,10 @@ class EmbeddingEngine:
     """
 
     def __init__(
-        self, embedding_dir: str, batch_size: int = configs.embedding.batch_size
+        self, repo_id: str=configs.embedding.repo, batch_size: int=configs.embedding.batch_size
     ) -> None:
         self.device = get_device()
-        self.embedding_dir = embedding_dir
+        self.repo_id = repo_id
         self.batch_size = batch_size
         self.load_model()
 
@@ -23,10 +23,10 @@ class EmbeddingEngine:
         Load the embedding model and tokenizer.
         """
         self.tokenizer = AutoTokenizer.from_pretrained(
-            self.embedding_dir, trust_remote_code=True, local_files_only=True
+            self.repo_id, trust_remote_code=True, cache_dir=configs.setup.model_folder
         )
         self.model = AutoModel.from_pretrained(
-            self.embedding_dir, trust_remote_code=True, local_files_only=True
+            self.repo_id, trust_remote_code=True, cache_dir=configs.setup.model_folder
         ).to(self.device)
 
         self.model.eval()
@@ -74,10 +74,10 @@ class EmbeddingEngine:
 
 
 if __name__ == "__main__":
-    test_text = "Test thử xem như nào nhé"
-    print("\n--- Đang tính toán vector embedding... ---")
 
-    embedding = EmbeddingEngine(embedding_dir="static/models/gte-multilingual-base")
+    test_text = "\n--- Bắt đầu khởi tạo embedding... ---"
+    print(test_text)
+    embedding = EmbeddingEngine()
 
     try:
         vector = torch.tensor(embedding.get_embeddings([test_text]))

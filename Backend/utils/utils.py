@@ -1,8 +1,8 @@
 import os
-from .logger import get_logger
-from typing import Union, Optional
+
 from dtos.utils import CodeBase
 
+from .logger import get_logger
 
 log = get_logger(__name__)
 
@@ -29,11 +29,11 @@ def get_device() -> str:
 
 def _generate_codebase_tree(
     path: str,
-    extensions: Optional[Union[list[str], str]] = None,
-    folders: Optional[Union[list[str], str]] = None,
-    files: Optional[Union[list[str], str]] = None,
+    extensions: list[str] | str | None = None,
+    folders: list[str] | str | None = None,
+    files: list[str] | str | None = None,
     return_json: bool = False
-) -> Union[str, CodeBase]:
+) -> str | CodeBase:
     """
     Quét toàn bộ thư mục và tạo ra một sơ đồ cây văn bản trực quan hoặc đối tượng CodeBase JSON.
     
@@ -44,7 +44,6 @@ def _generate_codebase_tree(
     - Input: return_json (bool, True nếu muốn trả về cấu trúc CodeBase Model)
     - Output: str (nếu return_json=False) hoặc CodeBase (nếu return_json=True)
     """
-    # 1. Chuẩn hóa tham số đầu vào (Áp dụng cho cả dạng chuỗi đơn lẫn mảng list)
     if isinstance(extensions, str):
         extensions = [extensions]
     extensions = [ext if ext.startswith('.') else f".{ext}" for ext in (extensions or [])]
@@ -57,14 +56,10 @@ def _generate_codebase_tree(
         files = [files]
     files = [os.path.basename(f) for f in (files or [])]
 
-    # Lấy đường dẫn tuyệt đối của thư mục gốc để tính toán đường dẫn tương đối (relative path) cho Frontend
     root_abs_path = os.path.abspath(path)
 
-    # ==========================================
-    # CHI NHÁNH 1: XỬ LÝ ĐẦU RA DẠNG JSON (CodeBase Object)
-    # ==========================================
     if return_json:
-        def _build_json_tree(current_dir: str) -> Optional[CodeBase]:
+        def _build_json_tree(current_dir: str) -> CodeBase:
             dir_name = os.path.basename(os.path.normpath(current_dir))
             rel_path = os.path.relpath(current_dir, root_abs_path)
             if rel_path == ".":
@@ -108,9 +103,6 @@ def _generate_codebase_tree(
 
         return _build_json_tree(root_abs_path)
 
-    # ==========================================
-    # CHI NHÁNH 2: GIỮ NGUYÊN LOGIC CŨ (Text Tree View)
-    # ==========================================
     output_lines = [f"Root: {os.path.basename(os.path.normpath(path))}/"]
 
     def _build_text_tree(current_dir: str, prefix: str = ""):
@@ -172,7 +164,7 @@ def _get_optimal_threads() -> int:
     except Exception:
         return 4
 
-def formart_mesage(system_prompt: str=None, prompt: str=None, assistance: str=None):
+def format_message(system_prompt: str=None, prompt: str=None, assistance: str=None):
     message = []
 
     if system_prompt and system_prompt.strip():
@@ -186,21 +178,18 @@ def formart_mesage(system_prompt: str=None, prompt: str=None, assistance: str=No
 
 
 if __name__ == "__main__":
-    # Đường dẫn thư mục hiện tại của bạn
-    path = "./"
+    path = r"D:\Project\Virtual_Assistant\Backend\static\models\gte-multilingual-base"
     
-    # Định nghĩa danh sách các thành phần rác/thành phần cấu hình cần ẩn đi cho gọn
     folders_to_ignore = [".git", ".venv", "__pycache__", "logs", "static", "node_modules", "assets"]
     extensions_to_ignore = [".pyc", ".log", ".DS_Store", ".lock"]
     files_to_ignore = ["README.md", ".gitignore", "pyproject.toml", "test.py", ".env", ".python-version", "test.json"]
 
-    # Chạy hàm trích xuất cấu trúc
     tree_result = _generate_codebase_tree(
         path=path,
         extensions=extensions_to_ignore,
         folders=folders_to_ignore,
         files=files_to_ignore,
-        return_json=False
+        return_json=True
     )
     
     print(tree_result)

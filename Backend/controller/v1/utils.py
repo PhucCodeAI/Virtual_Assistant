@@ -1,10 +1,14 @@
-from fastapi import APIRouter, Depends
-
-from utils.utils import _generate_codebase_tree
-from utils.logger import get_logger
-from dtos.utils import CodeBaseResponse, CodeBaseRequest
-from dtos.db import CreateRecordResponse, CreateRecord, UpdateRecordResponse, UpdateRecord
 from controller.dependencies import get_db
+from dtos.db import (
+    CreateRecord,
+    CreateRecordResponse,
+    UpdateRecord,
+    UpdateRecordResponse,
+)
+from dtos.utils import CodeBaseRequest, CodeBaseResponse
+from fastapi import APIRouter, Depends
+from utils.logger import get_logger
+from utils.utils import _generate_codebase_tree
 
 log = get_logger(__name__)
 utils_router = APIRouter()

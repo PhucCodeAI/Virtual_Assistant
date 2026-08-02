@@ -1,9 +1,10 @@
 import os
-import uuid
 import sqlite3
-from typing import Optional, Any
-from contextlib import contextmanager
+import uuid
 from collections.abc import Generator
+from contextlib import contextmanager
+from typing import Any, Optional
+
 from config import configs
 
 
@@ -53,7 +54,7 @@ class DataBase:
 
 
     # ==========================================
-    # CHUẨN CRUD (CREATE - READ - UPDATE - DELETE)
+    # CRUD (CREATE - READ - UPDATE - DELETE)
     # ==========================================
 
     def create(self, prompt_text: str, ai_response: str, image_path: Optional[str] = None) -> str:

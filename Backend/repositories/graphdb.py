@@ -23,7 +23,6 @@ class GraphDB:
         """Nạp đồ thị từ file nhị phân nén gzip vào RAM."""
         if os.path.exists(self.storage_path):
             try:
-                # FIX LỖI 2: Mở trực tiếp file path qua gzip.open
                 with gzip.open(self.storage_path, "rb") as f:
                     self.graph = pickle.load(f)
             except Exception as e:
@@ -32,7 +31,6 @@ class GraphDB:
 
     def save_memory(self) -> None:
         """Nén và đóng băng đồ thị từ RAM xuống ổ cứng (Public method)."""
-        # FIX LỖI 2: Mở trực tiếp file path qua gzip.open
         with gzip.open(self.storage_path, "wb") as f:
             pickle.dump(self.graph, f)
 
@@ -40,7 +38,6 @@ class GraphDB:
         self, source: str, target: str, relation: str, status: str
     ) -> bool:
         """
-        FIX LỖI 1: Hàm bị thiếu mà GraphEngine đang gọi.
         Cập nhật trạng thái của một relation cụ thể giữa source và target trong MultiDiGraph.
         """
         if not self.graph.has_edge(source, target):
@@ -50,7 +47,7 @@ class GraphDB:
         updated = False
 
         if isinstance(edge_data_dict, dict):
-            for key, data in edge_data_dict.items():
+            for data in edge_data_dict.values():
                 if isinstance(data, dict) and data.get("relation") == relation:
                     data["status"] = status
                     updated = True

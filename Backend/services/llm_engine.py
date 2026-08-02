@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from config import configs
 from llama_cpp import Llama
-from pydantic import BaseModel, Type
+from pydantic import BaseModel
 from utils.logger import get_logger
 from utils.utils import _get_optimal_threads
 
@@ -83,7 +83,7 @@ class LLMEngine:
     def generate_structured(
         self,
         messages: list[dict[str, str]],
-        response_model: Type[BaseModel],
+        response_model: type[BaseModel],
         temperature: float,
         top_p: float,
         max_tokens: int = configs.llm_engine.max_tokens,

@@ -18,7 +18,7 @@ from setup import setup
 from utils.logger import get_logger, setup_logging
 from workflows.orchestrator import Orchestrator
 
-embedding_dir, llm_path = setup()
+llm_path = setup()
 setup_logging()
 log = get_logger(__name__)
 
@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     """
     log.info("START...")
 
-    app.state.embedding_engine = EmbeddingEngine(embedding_dir=embedding_dir)
+    app.state.embedding_engine = EmbeddingEngine()
     app.state.llm_engine = LLMEngine(model_path=llm_path)
 
     app.state.db_repo = DataBase()

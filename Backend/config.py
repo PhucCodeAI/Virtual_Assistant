@@ -1,12 +1,12 @@
-import tomli
 from pathlib import Path
+
+import tomli
 from pydantic import BaseModel
 
 
 class SetupConfig(BaseModel):
     llm_repo_id: str
-    file_name: str
-    embedding_repo: str
+    llm_file_name: str
     model_folder: str
 
 class ServerConfig(BaseModel):
@@ -15,7 +15,6 @@ class ServerConfig(BaseModel):
     cors_origins: list[str]
 
 class LLMConfig(BaseModel):
-    model_path: str
     n_ctx: int
     n_gpu_layers: int
     max_tokens: int
@@ -25,6 +24,7 @@ class DatabaseConfig(BaseModel):
     db_path: str
 
 class EmbeddingConfig(BaseModel):
+    repo: str
     batch_size: int
     max_length: int
     dim: int
