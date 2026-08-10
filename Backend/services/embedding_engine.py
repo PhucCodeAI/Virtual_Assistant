@@ -11,7 +11,9 @@ class EmbeddingEngine:
     """
 
     def __init__(
-        self, repo_id: str=configs.embedding.repo, batch_size: int=configs.embedding.batch_size
+        self,
+        repo_id: str = configs.embedding.repo,
+        batch_size: int = configs.embedding.batch_size,
     ) -> None:
         self.device = get_device()
         self.repo_id = repo_id
@@ -74,7 +76,6 @@ class EmbeddingEngine:
 
 
 if __name__ == "__main__":
-
     test_text = "\n--- Bắt đầu khởi tạo embedding... ---"
     print(test_text)
     embedding = EmbeddingEngine()

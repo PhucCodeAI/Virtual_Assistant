@@ -5,11 +5,16 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "arize-phoenix>=19.18.0",
     "fastapi[standard]>=0.138.1",
     "httpx>=0.28.1",
     "lancedb>=0.33.0",
     "llama-cpp-python>=0.3.34",
+    "loguru>=0.7.3",
     "nvidia-ml-py>=13.610.43",
+    "openinference-instrumentation-openai>=0.1.53",
+    "opentelemetry-exporter-otlp>=1.44.0",
+    "opentelemetry-sdk>=1.44.0",
     "psutil>=7.2.2",
     "pynvml>=13.0.1",
     "selectolax>=0.4.11",

@@ -4,6 +4,14 @@ llm_file_name = "Qwen3.5-4B-UD-Q4_K_XL.gguf"
 model_folder = "static/models"
 
 
+[logs]
+log_path = "./logs/app/app.log"
+
+
+[phoenix]
+data_dir = "./logs/phoenix_data"
+
+
 [server]
 host = "0.0.0.0"
 port = 8000

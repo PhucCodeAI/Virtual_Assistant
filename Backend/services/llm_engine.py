@@ -4,21 +4,21 @@ import os
 import time
 from collections.abc import AsyncGenerator
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from config import configs
-from llama_cpp import Llama
+from llama_cpp import ChatCompletionRequestMessage, Llama
+from loguru import logger
 from pydantic import BaseModel
-from utils.logger import get_logger
 from utils.utils import _get_optimal_threads
 
-log = get_logger(__name__)
 _executor = ThreadPoolExecutor(max_workers=_get_optimal_threads())
 
 
 class LLMEngine:
     def __init__(
         self,
-        model_path: str,
+        model_path: str = f"{configs.setup.model_folder}/{configs.setup.llm_file_name}",
         n_gpu_layers: int = configs.llm_engine.n_gpu_layers,
         n_ctx: int = configs.llm_engine.n_ctx,
     ):
@@ -44,7 +44,7 @@ class LLMEngine:
 
         self.lock = asyncio.Lock()
 
-        log.info(f"Load xong model {model_path.split('/')[-1].split('.')[0]}")
+        logger.info(f"Load xong model {model_path.split('/')[-1].split('.')[0]}")
 
     def _get_input_tokens(self, messages: list[dict[str, str]]) -> int:
         """
@@ -82,7 +82,7 @@ class LLMEngine:
 
     def generate_structured(
         self,
-        messages: list[dict[str, str]],
+        messages: list[ChatCompletionRequestMessage],
         response_model: type[BaseModel],
         temperature: float,
         top_p: float,
@@ -90,7 +90,7 @@ class LLMEngine:
         max_retries: int = configs.llm_engine.max_retries,
     ) -> BaseModel:
         def _run(temp) -> BaseModel:
-            response_format = {
+            response_format: Any = {
                 "type": "json_object",
                 "schema": response_model.model_json_schema(),
             }
@@ -111,14 +111,14 @@ class LLMEngine:
                 future = _executor.submit(_run, temperature)
                 return future.result()
             except Exception as e:
-                log.warning(
+                logger.warning(
                     f"⚠️ Lần thử {attempt} thất bại do lỗi định dạng đầu ra: {e!s}"
                 )
                 temperature = 0.0
                 time.sleep(0.5)
 
         error_msg = f"Thất bại: Đã thử lại tối đa {max_retries} lần nhưng LLM vẫn sinh chuỗi JSON không hợp lệ."
-        log.error(error_msg)
+        logger.error(error_msg)
         raise RuntimeError(error_msg)
 
     async def generate_stream(
@@ -133,7 +133,7 @@ class LLMEngine:
         -Input: req (ChatRequest, DTO chứa thông tin request từ người dùng)
         -Output: AsyncGenerator[str, None] (Luồng text stream trả về cho Controller)
         """
-        log.info(f"Nhận request: {messages}")
+        logger.info(f"Nhận request: {messages}")
 
         await self.lock.acquire()
         try:
@@ -143,7 +143,7 @@ class LLMEngine:
 
             if prompt_tokens > configs.llm_engine.n_ctx - configs.llm_engine.max_tokens:
                 error_msg = f"Error: Token của request vượt quá giới hạn ({prompt_tokens} > {configs.llm_engine.n_ctx - configs.llm_engine.max_tokens}). Vui lòng giảm độ dài input"
-                log.error(error_msg)
+                logger.error(error_msg)
                 yield f"data: {json.dumps({'type': 'error', 'content': error_msg}, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 return
@@ -153,7 +153,7 @@ class LLMEngine:
             )
 
             while True:
-                chunk = await asyncio.to_thread(lambda: next(sync_generator, None))  # type: ignore
+                chunk = await asyncio.to_thread(lambda: next(sync_generator, None))
 
                 if chunk is None:
                     break
