@@ -7,10 +7,12 @@ logs/
 .venv/
 .pytest_cache/
 
-
 # UI service
 UI/.svelte-kit
 UI/.vscode
 UI/.prettierignore
 UI/.prettierrc
 node_modules
+
+# Secret
+.env
