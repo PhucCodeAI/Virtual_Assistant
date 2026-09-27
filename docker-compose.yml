@@ -1,0 +1,45 @@
+services:
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: backend
+    ports:
+      - "8000:8000"
+    environment:
+      - WORKSPACE_BASE=/app/storage/sandboxes
+      - HOST_WORKSPACE_DIR=${PWD}/Backend/storage/sandboxes
+    env_file:
+      - ./Backend/.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./Backend/storage/sandboxes:/app/storage/sandboxes
+      - ./Backend/storage/database:/app/storage/database
+      - ./Backend/storage/graph:/app/storage/graph
+      - ./Backend/logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - network
+
+  frontend:
+    build:
+      context: ./UI
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_BACKEND_URL=http://localhost:8000
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./UI:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - network
+
+networks:
+  network:
+    driver: bridge

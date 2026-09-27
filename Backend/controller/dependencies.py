@@ -1,31 +1,37 @@
+from functools import lru_cache
+
 from fastapi import Request
 from repositories.database import DataBase
 from repositories.graphdb import GraphDB
 from repositories.vectordb import VectorDB
-from services.embedding_engine import EmbeddingEngine
-from Backend.services.llm_client import LLMEngine
-from workflows.orchestrator import AgentOrchestrator
+from services.embedding_client import EmbeddingClient
+from services.git_service import GitService
+from services.llm_client import LLMClient
+from services.orchestrator import Orchestrator
+from services.sandbox_engine import SandboxEngine
 
 
+@lru_cache
 def get_vector_db(request: Request) -> VectorDB:
     return request.app.state.vector_repo
 
-
+@lru_cache
 def get_graph_db(request: Request) -> GraphDB:
     return request.app.state.graph_repo
 
-
+@lru_cache
 def get_db(request: Request) -> DataBase:
     return request.app.state.db_repo
 
+@lru_cache
+def get_embedding(request: Request) -> EmbeddingClient:
+    return request.app.state.embedding_client
 
-def get_embedding(request: Request) -> EmbeddingEngine:
-    return request.app.state.embedding_engine
+@lru_cache
+def get_llm(request: Request) -> LLMClient:
+    return request.app.state.llm_client
 
 
-def get_llm(request: Request) -> LLMEngine:
-    return request.app.state.llm_engine
-
-
-def get_orchestrator(request: Request) -> AgentOrchestrator:
+@lru_cache
+def get_orchestrator(request: Request) -> Orchestrator:
     return request.app.state.orchestrator

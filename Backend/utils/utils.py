@@ -1,29 +1,6 @@
 import os
 
 from dtos.utils import CodeBase
-from loguru import logger
-
-
-def get_device() -> str:
-    """
-    Auto detect device for PyTorch:
-
-    - If available GPU NVIDIA, return "cuda".
-    - If available GPU Apple Silicon, return "mps".
-    - If unavailable GPU or Mps, return "cpu".
-    """
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            return "cuda"
-        elif torch.backends.mps.is_available():
-            return "mps"
-        else:
-            return "cpu"
-    except ImportError:
-        logger.warning("PyTorch chưa được cài đặt. Sử dụng CPU mặc định.")
-        return "cpu"
 
 
 def _generate_codebase_tree(
@@ -149,32 +126,6 @@ def _generate_codebase_tree(
     return "\n".join(output_lines)
 
 
-def _get_optimal_threads() -> int:
-    """
-    Docstring: Tự động tính toán số lượng threads tối ưu cho bộ thực thi llama.cpp.
-
-    Thuật toán tối ưu phần cứng (Tháng 6/2026):
-    - Đối với kiến trúc lai (Hybrid CPU như Intel thế hệ 12, 13, 14), việc dùng toàn bộ luồng ảo (Hyper-threading) sẽ làm giảm throughput của AI do dính vào nhân E-Core chậm.
-    - Điểm ngọt hiệu năng (Sweet Spot) là bằng đúng số NHÂN THỰC (Physical P-Cores).
-    - Với chíp i5-12400F (6 nhân thực, 12 luồng), hàm sẽ tự động trả về 6.
-    """
-    try:
-        logical_cores = os.cpu_count() or 4
-
-        if logical_cores > 4:
-            optimal_threads = logical_cores // 2
-        else:
-            optimal_threads = logical_cores
-
-        logger.info(
-            f"Phát hiện {logical_cores} luồng. Chọn cấu hình tối ưu: {optimal_threads} threads."
-        )
-        return optimal_threads
-
-    except Exception:
-        return 4
-
-
 def format_message(
     system_prompt: str = "", prompt: str = "", assistance: str = ""
 ) -> list[dict[str, str]]:
@@ -201,10 +152,8 @@ def override_system_prompt(
     -Input: agent_system_prompt (str), messages (list[dict[str, str]])
     -Output: list[dict[str, str]] (Mảng messages sạch chỉ chứa 1 system prompt + history user/assistant)
     """
-    # 1. Lọc bỏ HOÀN TOÀN các message có role == 'system' cũ
     clean_history = [msg for msg in messages if msg.get("role") != "system"]
 
-    # 2. Đặt System Prompt của Agent chuyên biệt làm duy nhất ở Index 0
     agent_system_msg = {"role": "system", "content": agent_system_prompt}
 
     return [agent_system_msg] + clean_history
@@ -221,12 +170,11 @@ if __name__ == "__main__":
         "static",
         "node_modules",
         "assets",
+        ".pytest_cache",
+        ".vscode"
     ]
     extensions_to_ignore = [".pyc", ".log", ".DS_Store", ".lock"]
     files_to_ignore = [
-        "README.md",
-        ".gitignore",
-        "pyproject.toml",
         "test.py",
         ".env",
         ".python-version",

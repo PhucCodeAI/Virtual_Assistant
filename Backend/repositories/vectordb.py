@@ -3,7 +3,7 @@ import json
 import lancedb
 import pyarrow as pa
 from config import configs
-from services.embedding_engine import EmbeddingEngine
+from services.embedding_client import EmbeddingClient
 
 
 class VectorDB:
@@ -12,7 +12,7 @@ class VectorDB:
     Disk-based storage, low RAM consumption, built-in search algorithms.
     """
 
-    def __init__(self, embedding: EmbeddingEngine) -> None:
+    def __init__(self, embedding: EmbeddingClient) -> None:
         """
         Initialize the VectorDB connection and table using configurations.
 
@@ -123,7 +123,7 @@ class VectorDB:
 
 
 if __name__ == "__main__":
-    embedding = EmbeddingEngine()
+    embedding = EmbeddingClient()
     vdb = VectorDB(embedding)
     vdb.add_record(["Đố bạn biết tôi là ai?"], [{"source": "fun"}])
     results = vdb.search("trợ lý ảo")

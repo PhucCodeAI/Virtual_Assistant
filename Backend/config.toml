@@ -19,13 +19,17 @@ cors_origins = ["http://localhost:5173"]
 db_path = "./storage/database/database.db"
 
 [embedding]
-repo = "Alibaba-NLP/gte-multilingual-base"
+url = "https://openrouter.ai/api/v1/embeddings"
+model = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
 batch_size = 32
-max_length = 1024
-dim = 768
+max_retries = 2
+concurrency = 8
 
 [vectordb]
 vector_db_path = "./storage/vectordb"
 
 [graphdb]
 graph_db_path = "./storage/graph/graph_db.pkl.gz"
+
+[orchestrator]
+workspace_base = "./storage/sandboxes"
