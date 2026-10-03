@@ -2,6 +2,7 @@
 
 import json
 from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -10,7 +11,9 @@ class InputRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    prompt: str = Field(..., min_length=1, description="Yêu cầu lập trình của người dùng")
+    prompt: str = Field(
+        ..., min_length=1, description="Yêu cầu lập trình của người dùng"
+    )
     session_id: str | None = Field(default=None, description="Mã phiên làm việc nếu có")
 
 
@@ -24,7 +27,9 @@ class StatusEventPayload(BaseModel):
 class TokenEventPayload(BaseModel):
     """Payload cho event stream từng mẩu text ra màn hình UI."""
 
-    delta: str = Field(..., description="Đoạn văn bản/mã nguồn sinh ra theo thời gian thực")
+    delta: str = Field(
+        ..., description="Đoạn văn bản/mã nguồn sinh ra theo thời gian thực"
+    )
 
 
 class CommitEventPayload(BaseModel):
@@ -32,7 +37,9 @@ class CommitEventPayload(BaseModel):
 
     hash: str = Field(..., description="Mã SHA của commit")
     message: str = Field(..., description="Thông điệp của commit")
-    files: list[str] = Field(default_factory=list, description="Danh sách các file đã thay đổi")
+    files: list[str] = Field(
+        default_factory=list, description="Danh sách các file đã thay đổi"
+    )
 
 
 class ErrorEventPayload(BaseModel):
@@ -50,9 +57,12 @@ class DoneEventPayload(BaseModel):
     total_time: int = Field(..., description="Tổng thời gian thực thi (ms)")
     total_token: int = Field(..., description="Tổng lượng token sử dụng")
     input_token: int = Field(default=0, description="Số lượng prompt token")
-    reasoning_token: int = Field(default=0, description="Số lượng thinking/reasoning token")
+    reasoning_token: int = Field(
+        default=0, description="Số lượng thinking/reasoning token"
+    )
     cache_token: int = Field(default=0, description="Số lượng cached token")
     cost: float = Field(default=0.0, description="Chi phí ước tính")
+    trace_id: str = Field(default="", description="Mã định danh trace")
 
 
 def format_sse(event_name: str, payload: BaseModel | dict[str, Any]) -> str:

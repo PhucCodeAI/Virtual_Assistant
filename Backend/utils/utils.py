@@ -171,7 +171,7 @@ if __name__ == "__main__":
         "node_modules",
         "assets",
         ".pytest_cache",
-        ".vscode"
+        ".vscode",
     ]
     extensions_to_ignore = [".pyc", ".log", ".DS_Store", ".lock"]
     files_to_ignore = [
