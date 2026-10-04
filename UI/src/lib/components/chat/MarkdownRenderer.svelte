@@ -1,5 +1,6 @@
 <script lang="ts">
   import { highlightCode } from './highlighter';
+  import { sanitizeHtml } from './safe_html';
 
   let { content = '' }: { content: string } = $props();
   let copiedId = $state<string | null>(null);
@@ -74,6 +75,13 @@
     return escaped;
   }
 
+  /** Sinh mảng [1, 2, ..., n] để render số dòng. */
+  function lineNumbers(count: number): number[] {
+    const out: number[] = [];
+    for (let i = 1; i <= count; i++) out.push(i);
+    return out;
+  }
+
   async function copyToClipboard(id: string, text: string) {
     await navigator.clipboard.writeText(text);
     copiedId = id;
@@ -110,17 +118,21 @@
 
         <div class="flex text-[12px] leading-5 overflow-x-auto py-2.5 font-mono">
           <div class="select-none text-right pr-3 pl-3 text-zinc-600 border-r border-[#202024] shrink-0 font-mono text-[11px]">
-            {#each Array(lineCount) as _, i}
-              <div class="leading-5">{i + 1}</div>
+            {#each lineNumbers(lineCount) as lineNo (lineNo)}
+              <div class="leading-5">{lineNo}</div>
             {/each}
           </div>
 
-          <pre class="pl-3.5 pr-4 text-zinc-200 whitespace-pre overflow-x-visible leading-5 font-mono"><code>{@html highlighted}</code></pre>
+          <!-- QUAN TRỌNG: {@html} phải nằm CÙNG DÒNG với <code> để tránh
+               whitespace \n\n ở đầu code block (bug từ turn trước). -->
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -- output sanitized via sanitizeHtml -->
+          <pre class="pl-3.5 pr-4 text-zinc-200 whitespace-pre overflow-x-visible leading-5 font-mono"><code>{@html sanitizeHtml(highlighted)}</code></pre>
         </div>
       </div>
     {:else}
       <div class="leading-relaxed">
-        {@html formatInline(block.text)}
+        <!-- eslint-disable-next-line svelte/no-at-html-tags -- output sanitized; formatInline escapes <>& before injecting its own tags -->
+        <div>{@html sanitizeHtml(formatInline(block.text))}</div>
       </div>
     {/if}
   {/each}

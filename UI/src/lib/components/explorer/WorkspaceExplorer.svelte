@@ -1,18 +1,22 @@
 <script lang="ts">
   import { agentSession } from '$lib/state/agent_session.svelte';
   import type { FileNode } from '$lib/state/types';
-
-  function renderStatusBadge(status: FileNode['status']) {
-    switch (status) {
-      case 'editing':
-        return '<span class="text-[10px] px-1 py-0.2 bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded">Editing</span>';
-      case 'testing':
-        return '<span class="text-[10px] px-1 py-0.2 bg-sky-500/10 text-sky-400 border border-sky-500/30 rounded">Testing</span>';
-      default:
-        return '';
-    }
-  }
 </script>
+
+<!-- Snippet render status badge — thay cho {@html} + string HTML cũ.
+     Static markup, không cần sanitize. Svelte 5 snippet giữ type-safe
+     và không cần eslint-disable. -->
+{#snippet statusBadge(status: FileNode['status'])}
+  {#if status === 'editing'}
+    <span class="text-[10px] px-1 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded">
+      Editing
+    </span>
+  {:else if status === 'testing'}
+    <span class="text-[10px] px-1 py-0.5 bg-sky-500/10 text-sky-400 border border-sky-500/30 rounded">
+      Testing
+    </span>
+  {/if}
+{/snippet}
 
 <div class="flex flex-col h-full text-xs">
   <div class="p-3 uppercase tracking-wider text-[11px] font-semibold text-zinc-500 border-b border-[#27272a] flex items-center justify-between">
@@ -34,7 +38,7 @@
                 class="flex items-center justify-between px-2 py-1 rounded cursor-pointer transition-all duration-150 {child.status === 'editing' ? 'bg-amber-500/10 border-l-2 border-amber-400 text-amber-200' : 'hover:bg-zinc-800/60 text-zinc-400'}"
               >
                 <span class="truncate">{child.name}</span>
-                {@html renderStatusBadge(child.status)}
+                {@render statusBadge(child.status)}
               </div>
             {/each}
           </div>

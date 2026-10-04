@@ -33,7 +33,7 @@ services:
       - CHOKIDAR_USEPOLLING=true
     volumes:
       - ./UI:/app
-      - /app/node_modules
+      - ui_node_modules:/app/node_modules
     depends_on:
       - backend
     restart: unless-stopped
@@ -43,3 +43,6 @@ services:
 networks:
   network:
     driver: bridge
+
+volumes:
+  ui_node_modules:

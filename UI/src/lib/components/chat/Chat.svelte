@@ -1,7 +1,12 @@
 <script lang="ts">
   import { agentSession } from '$lib/state/agent_session.svelte';
   import MarkdownRenderer from './MarkdownRenderer.svelte';
-  
+  import PlanPanel from './PlanPanel.svelte';
+  import ErrorBanner from './ErrorBanner.svelte';
+  import DoneMetrics from './DoneMetrics.svelte';
+  import SandboxLog from './SandboxLog.svelte';
+  import type { AgentAction } from '$lib/state/types';
+
   let userInput = $state('');
   let textareaRef: HTMLTextAreaElement | null = $state(null);
 
@@ -22,7 +27,7 @@
         const start = target.selectionStart;
         const end = target.selectionEnd;
         userInput = userInput.substring(0, start) + '\n' + userInput.substring(end);
-        
+
         queueMicrotask(() => {
           target.selectionStart = target.selectionEnd = start + 1;
         });
@@ -41,7 +46,29 @@
   }
 </script>
 
+<!-- Snippet: timeline actions dùng chung cho message đã done và streaming live. -->
+{#snippet actionTimeline(actions: AgentAction[], live: boolean)}
+  <div class="space-y-1 font-mono text-[11px] w-full">
+    {#each actions as act (act.id)}
+      <div class="flex items-center gap-2 px-2.5 py-1 rounded bg-[#1f1f23] border border-[#2c2c31]">
+        {#if live && act.status === 'running'}
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+        {:else if act.status === 'success'}
+          <span class="text-emerald-400 text-xs">✓</span>
+        {:else if act.status === 'failed'}
+          <span class="text-rose-400 text-xs">✗</span>
+        {:else}
+          <span class="text-zinc-500 text-xs">•</span>
+        {/if}
+        <span class="text-zinc-300 truncate">{act.label}</span>
+        <span class="text-zinc-600 text-[10px] ml-auto shrink-0">{act.timestamp}</span>
+      </div>
+    {/each}
+  </div>
+{/snippet}
+
 <div class="flex flex-col h-full bg-[#18181b] text-zinc-200">
+  <!-- ══════════════ Header: status + cumulative metrics ══════════════ -->
   <div class="px-3 py-2.5 border-b border-[#27272a] bg-[#141417] flex items-center justify-between gap-2 overflow-x-auto text-[11px] font-mono shrink-0 select-none">
     <div class="flex items-center gap-1.5 shrink-0">
       <span class="w-2 h-2 rounded-full {agentSession.isStreaming ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500'}"></span>
@@ -67,6 +94,7 @@
     </div>
   </div>
 
+  <!-- ══════════════ Messages ══════════════ -->
   <div class="flex-1 overflow-y-auto p-4 space-y-5">
     {#each agentSession.messages as msg (msg.id)}
       {#if msg.role === 'user'}
@@ -83,20 +111,14 @@
       {:else}
         <div class="flex flex-col items-start space-y-2">
           {#if msg.actions && msg.actions.length > 0}
-            <div class="space-y-1 font-mono text-[11px] w-full">
-              {#each msg.actions as act (act.id)}
-                <div class="flex items-center gap-2 px-2.5 py-1 rounded bg-[#1f1f23] border border-[#2c2c31]">
-                  <span class="text-emerald-400">✓</span>
-                  <span class="text-zinc-300 truncate">{act.label}</span>
-                  <span class="text-zinc-600 text-[10px] ml-auto shrink-0">{act.timestamp}</span>
-                </div>
-              {/each}
-            </div>
+            {@render actionTimeline(msg.actions, false)}
           {/if}
 
-          <div class="w-full p-3.5 rounded-xl bg-[#141416] border border-[#27272a]">
-            <MarkdownRenderer content={msg.content} />
-          </div>
+          {#if msg.content.trim()}
+            <div class="w-full p-3.5 rounded-xl bg-[#141416] border border-[#27272a]">
+              <MarkdownRenderer content={msg.content} />
+            </div>
+          {/if}
 
           {#if msg.latencyMs}
             <div class="flex items-center gap-1.5 text-[10px] font-mono text-zinc-500 ml-1">
@@ -110,24 +132,15 @@
       {/if}
     {/each}
 
+    <!-- ══════════════ Streaming block: plan + actions + message ══════════════ -->
     {#if agentSession.isStreaming}
-      <div class="flex flex-col items-start space-y-2">
+      <div class="flex flex-col items-start space-y-3 w-full">
+        {#if agentSession.currentPlan}
+          <PlanPanel plan={agentSession.currentPlan} />
+        {/if}
+
         {#if agentSession.actions.length > 0}
-          <div class="space-y-1 font-mono text-[11px] w-full">
-            {#each agentSession.actions as act (act.id)}
-              <div class="flex items-center gap-2 px-2.5 py-1 rounded bg-[#1f1f23] border border-[#2c2c31]">
-                {#if act.status === 'running'}
-                  <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
-                {:else if act.status === 'success'}
-                  <span class="text-emerald-400 text-xs">✓</span>
-                {:else}
-                  <span class="text-rose-400 text-xs">✗</span>
-                {/if}
-                <span class="text-zinc-300 truncate">{act.label}</span>
-                <span class="text-zinc-600 text-[10px] ml-auto shrink-0">{act.timestamp}</span>
-              </div>
-            {/each}
-          </div>
+          {@render actionTimeline(agentSession.actions, true)}
         {/if}
 
         {#if agentSession.streamingMessage}
@@ -138,26 +151,49 @@
       </div>
     {/if}
 
+    <!-- ══════════════ Terminal: done / error (UI-004 + UI-006) ══════════════ -->
+    {#if !agentSession.isStreaming && agentSession.lastDone}
+      <DoneMetrics done={agentSession.lastDone} />
+    {/if}
+
+    {#if !agentSession.isStreaming && agentSession.sandboxEvents.length > 0}
+      <SandboxLog events={agentSession.sandboxEvents} />
+    {/if}
+
+    {#if !agentSession.isStreaming && agentSession.lastError}
+      <ErrorBanner error={agentSession.lastError} />
+    {/if}
+
+    <!-- ══════════════ Empty state ══════════════ -->
     {#if agentSession.messages.length === 0 && !agentSession.isStreaming}
       <div class="flex flex-col items-center justify-center h-48 text-zinc-500 text-xs text-center space-y-1">
         <p class="font-medium text-zinc-400">Claude-Style Orchestrator</p>
-        <p class="text-[11px]">Bấm <kbd class="px-1 py-0.5 bg-zinc-800 rounded font-mono text-zinc-300">Enter</kbd> để gửi lệnh, <kbd class="px-1 py-0.5 bg-zinc-800 rounded font-mono text-zinc-300">Ctrl + Enter</kbd> để xuống dòng.</p>
+        <p class="text-[11px]">
+          Bấm
+          <kbd class="px-1 py-0.5 bg-zinc-800 rounded font-mono text-zinc-300">Enter</kbd>
+          để gửi lệnh,
+          <kbd class="px-1 py-0.5 bg-zinc-800 rounded font-mono text-zinc-300">Ctrl + Enter</kbd>
+          để xuống dòng.
+        </p>
       </div>
     {/if}
   </div>
 
+  <!-- ══════════════ Input area ══════════════ -->
   <div class="p-3 border-t border-[#27272a] bg-[#141417]">
     <div class="relative bg-[#1c1c20] border border-[#303036] rounded-xl focus-within:border-amber-500/60 transition-colors">
       <textarea
         bind:this={textareaRef}
         bind:value={userInput}
         onkeydown={handleKeyDown}
-        placeholder={agentSession.isStreaming ? "Agent đang giải trình và kiểm thử code..." : "Nhập chỉ thị (Enter để gửi, Ctrl + Enter để xuống dòng)..."}
+        placeholder={agentSession.isStreaming
+          ? "Agent đang giải trình và kiểm thử code..."
+          : "Nhập chỉ thị (Enter để gửi, Ctrl + Enter để xuống dòng)..."}
         disabled={agentSession.isStreaming}
         rows="2"
         class="w-full bg-transparent px-3 py-2 text-xs focus:outline-none resize-none text-zinc-200 placeholder-zinc-500 disabled:opacity-50"
       ></textarea>
-      
+
       <div class="flex items-center justify-between px-3 py-1.5 border-t border-[#26262b] text-xs select-none">
         <div class="flex items-center gap-1.5 text-zinc-500 font-mono text-[10px]">
           <span>Target:</span>

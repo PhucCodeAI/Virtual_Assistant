@@ -1,7 +1,7 @@
 # Backend service
 test.*
-Backend/static/models
 Backend/storage
+Backend/logs/
 __pycache__/
 logs/
 .venv/

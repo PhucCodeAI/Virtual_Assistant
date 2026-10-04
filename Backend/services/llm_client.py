@@ -1,102 +1,163 @@
+# Backend/services/llm_client.py
+"""Module gateway giao tiếp với API LLM (Data Access Layer).
+
+Cung cấp 3 chế độ gọi mô hình:
+    - generate: sinh văn bản thông thường.
+    - stream_generate: stream từng chunk qua SSE.
+    - structured_generate: ép kiểu output theo Pydantic schema với 3 mode
+      (json_schema / json_object / prompt_only) để tương thích mọi model.
+
+Exception sử dụng từ package `exceptions` — không định nghĩa inline.
+"""
+
+from __future__ import annotations
+
 import asyncio
 import json
+import re
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any, TypeVar
 
 import httpx
 from config import configs
-from pydantic import BaseModel, ConfigDict
+from exceptions import LLMResponseError, LLMSchemaError, LLMStreamError
+from loguru import logger
+from pydantic import BaseModel, ValidationError
 
 T = TypeVar("T", bound=BaseModel)
 
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
 
 class LLMClient:
-    """Gateway giao tiếp với API LLM (Data Access Layer).
+    """Gateway giao tiếp với API LLM (OpenRouter-compatible)."""
 
-    Cung cấp các phương thức gọi mô hình ngôn ngữ (thường, stream và ép kiểu dữ liệu)
-    với cơ chế retry lũy thừa và chuẩn hóa phản hồi phục vụ giám sát hệ thống Agent.
-    """
-
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str) -> None:
         """Khởi tạo LLMClient.
 
         Args:
-            api_key (str): Khóa xác thực API của nhà cung cấp (OpenRouter).
+            api_key: Khóa xác thực API của nhà cung cấp.
+
+        Raises:
+            ValueError: Khi api_key rỗng.
         """
+        if not api_key or not api_key.strip():
+            raise ValueError("api_key không được rỗng")
+
         self.cfg = configs.llm
-        self.client = httpx.AsyncClient(timeout=120)
         self.api_key = api_key
+        self.client = httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                connect=10.0,
+                read=float(self.cfg.timeout_sec),
+                write=30.0,
+                pool=10.0,
+            ),
+        )
 
     async def aclose(self) -> None:
-        """Giải phóng tài nguyên và đóng HTTP client kết nối ngầm."""
+        """Giải phóng tài nguyên HTTP client."""
         await self.client.aclose()
 
     def _headers(self) -> dict[str, str]:
-        """Tạo HTTP Headers chuẩn cho yêu cầu.
+        """Tạo HTTP headers chuẩn cho OpenRouter.
 
         Returns:
-            dict[str, str]: Dictionary chứa thông tin Authorization và Content-Type.
+            Dictionary chứa Authorization và Content-Type.
         """
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
 
-    def _payload(self, messages: list[dict[str, str]], **kwargs: Any) -> dict[str, Any]:
-        """Đóng gói dữ liệu yêu cầu gửi lên mô hình.
+    def _payload(
+        self,
+        messages: list[dict[str, str]],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Đóng gói payload gửi lên model.
 
         Args:
-            messages (list[dict[str, str]]): Lịch sử ngữ cảnh tin nhắn.
-            **kwargs (Any): Các tham số tinh chỉnh bổ sung (temperature, top_p,...).
+            messages: Lịch sử hội thoại.
+            **kwargs: Tham số tinh chỉnh bổ sung.
 
         Returns:
-            dict[str, Any]: Payload JSON chuẩn bị gửi đi.
+            Payload JSON đã chuẩn hóa (loại bỏ reserved key khỏi kwargs).
         """
-        payload: dict[str, Any] = {
+        reserved = {"model", "messages", "stream", "stream_options", "response_format"}
+        safe_kwargs = {k: v for k, v in kwargs.items() if k not in reserved}
+        return {
             "model": self.cfg.model,
             "messages": messages,
+            **safe_kwargs,
         }
-        payload.update(kwargs)
-        return payload
 
-    async def _retry(self, func: Any, *args: Any, **kwargs: Any) -> Any:
-        """Thực thi hàm bất đồng bộ với cơ chế retry khi gặp lỗi tạm thời.
+    # --------------------------------------------------------
+    # Retry
+    # --------------------------------------------------------
+    async def _retry(
+        self,
+        func: Callable[[], Awaitable[T]],
+        max_attempts: int | None = None,
+    ) -> T:
+        """Thực thi hàm async với retry lũy thừa.
 
         Args:
-            func (Any): Hàm bất đồng bộ cần thực thi.
-            *args (Any): Tham số vị trí của hàm.
-            **kwargs (Any): Tham số định danh của hàm.
+            func: Closure async không tham số.
+            max_attempts: Số lần thử tối đa. Mặc định lấy từ config.
 
         Returns:
-            Any: Kết quả trả về của hàm được gọi.
+            Kết quả của func khi thành công.
 
         Raises:
-            httpx.HTTPStatusError: Lỗi HTTP nếu vượt quá số lần retry hoặc lỗi không thể phục hồi.
+            httpx.HTTPStatusError: Lỗi HTTP không thể phục hồi.
+            httpx.RequestError: Lỗi network sau khi hết lượt retry.
         """
-        last_exc: httpx.HTTPStatusError | None = None
-        for attempt in range(self.cfg.max_retries + 1):
+        attempts = max_attempts if max_attempts is not None else self.cfg.max_retries + 1
+        last_exc: Exception | None = None
+
+        for attempt in range(1, attempts + 1):
             try:
-                return await func(*args, **kwargs)
+                return await func()
             except httpx.HTTPStatusError as e:
-                if e.response.status_code not in (429, 500, 502, 503, 504):
+                if e.response.status_code not in _RETRYABLE_STATUS:
                     raise
                 last_exc = e
-                if attempt < self.cfg.max_retries:
-                    wait = self._retry_after(e.response) or (2**attempt)
-                    await asyncio.sleep(wait)
-        if last_exc:
-            raise last_exc
+                wait = self._retry_after(e.response) or float(2 ** (attempt - 1))
+                logger.warning(
+                    "LLM HTTP {} (attempt {}/{}), retry sau {:.1f}s",
+                    e.response.status_code,
+                    attempt,
+                    attempts,
+                    wait,
+                )
+            except httpx.RequestError as e:
+                last_exc = e
+                wait = float(2 ** (attempt - 1))
+                logger.warning(
+                    "LLM network error (attempt {}/{}): {} — retry sau {:.1f}s",
+                    attempt,
+                    attempts,
+                    type(e).__name__,
+                    wait,
+                )
+
+            if attempt < attempts:
+                await asyncio.sleep(wait)
+
+        assert last_exc is not None
+        raise last_exc
 
     @staticmethod
     def _retry_after(response: httpx.Response) -> float | None:
-        """Đọc thời gian chờ được khuyến nghị từ HTTP Header Retry-After.
+        """Đọc header Retry-After nếu có.
 
         Args:
-            response (httpx.Response): Đối tượng phản hồi từ server.
+            response: Phản hồi HTTP.
 
         Returns:
-            float | None: Số giây cần chờ, hoặc None nếu không tồn tại hoặc sai định dạng.
+            Số giây cần chờ, hoặc None nếu không hợp lệ.
         """
         value = response.headers.get("Retry-After")
         if value is None:
@@ -106,15 +167,18 @@ class LLMClient:
         except ValueError:
             return None
 
+    # --------------------------------------------------------
+    # Metadata
+    # --------------------------------------------------------
     def _parse_info(self, data: dict[str, Any], elapsed_ms: int) -> dict[str, Any]:
-        """Trích xuất và chuẩn hóa metadata đo kiểm từ dữ liệu thô của OpenRouter.
+        """Chuẩn hóa metadata từ response OpenRouter.
 
         Args:
-            data (dict[str, Any]): Dữ liệu JSON gốc trả về từ API.
-            elapsed_ms (int): Tổng thời gian phản hồi (latency) tính bằng ms.
+            data: JSON gốc từ API.
+            elapsed_ms: Latency đo được (ms).
 
         Returns:
-            dict[str, Any]: Metadata chuẩn hóa cho logging và đánh giá hiệu năng Agent.
+            Dict metadata đã normalize.
         """
         usage = data.get("usage") or {}
         prompt_details = usage.get("prompt_tokens_details") or {}
@@ -126,40 +190,47 @@ class LLMClient:
             "request_id": data.get("id"),
             "model": data.get("model", self.cfg.model),
             "provider": data.get("provider", "unknown"),
-            "input_token": usage.get("prompt_tokens", 0),
-            "output_token": usage.get("completion_tokens", 0),
-            "total_token": usage.get("total_tokens", 0),
-            "reasoning_token": completion_details.get("reasoning_tokens", 0),
-            "cached_token": prompt_details.get("cached_tokens", 0),
-            "cost": float(usage.get("cost", 0.0)),
+            "input_token": int(usage.get("prompt_tokens") or 0),
+            "output_token": int(usage.get("completion_tokens") or 0),
+            "total_token": int(usage.get("total_tokens") or 0),
+            "reasoning_token": int(completion_details.get("reasoning_tokens") or 0),
+            "cached_token": int(prompt_details.get("cached_tokens") or 0),
+            "cost": float(usage.get("cost") or 0.0),
             "time": elapsed_ms,
             "finish_reason": finish_reason,
         }
 
-    async def generate(self, messages: list[dict[str, str]], **kwargs: Any) -> dict[str, Any]:
-        """Gửi yêu cầu sinh văn bản thông thường từ LLM.
+    # --------------------------------------------------------
+    # Public API
+    # --------------------------------------------------------
+    async def generate(
+        self,
+        messages: list[dict[str, str]],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Gọi LLM ở chế độ non-stream.
 
         Args:
-            messages (list[dict[str, str]]): Lịch sử hội thoại.
-            **kwargs (Any): Cấu hình bổ sung cho model.
+            messages: Lịch sử hội thoại.
+            **kwargs: Cấu hình bổ sung cho model.
 
         Returns:
-            dict[str, Any]: Dạng chuẩn gồm 'response' (str) và 'info' (dict).
+            Dict gồm 'response' (str) và 'info' (dict).
         """
         payload = self._payload(messages, **kwargs)
-        start_time = time.perf_counter()
+        start = time.perf_counter()
 
         async def _post() -> dict[str, Any]:
-            response = await self.client.post(
+            resp = await self.client.post(
                 url=self.cfg.url,
                 headers=self._headers(),
                 json=payload,
             )
-            response.raise_for_status()
-            return response.json()
+            resp.raise_for_status()
+            return resp.json()
 
         data = await self._retry(_post)
-        elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
         content = data["choices"][0]["message"]["content"] or ""
 
         return {
@@ -172,16 +243,20 @@ class LLMClient:
         messages: list[dict[str, str]],
         **kwargs: Any,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """Gửi yêu cầu stream văn bản từng đoạn về Presentation Layer.
+        """Gọi LLM ở chế độ stream (SSE).
 
-        Tự động cấu hình kèm stream_options để thu thập usage metrics ở chunk cuối cùng.
+        Chỉ retry nếu chưa yield chunk nào. Nếu đứt giữa chừng, raise
+        LLMStreamError để caller quyết định fallback.
 
         Args:
-            messages (list[dict[str, str]]): Lịch sử hội thoại.
-            **kwargs (Any): Cấu hình bổ sung.
+            messages: Lịch sử hội thoại.
+            **kwargs: Cấu hình bổ sung.
 
         Yields:
-            dict[str, Any]: Định dạng chuẩn gồm 'response' (str chunk) và 'info' (None hoặc dict ở chunk cuối).
+            Dict gồm 'response' (str chunk) và 'info' (None hoặc metadata cuối).
+
+        Raises:
+            LLMStreamError: Khi stream đứt giữa chừng sau khi đã yield.
         """
         payload = self._payload(
             messages,
@@ -189,48 +264,67 @@ class LLMClient:
             stream_options={"include_usage": True},
             **kwargs,
         )
-        start_time = time.perf_counter()
-        accumulated_meta: dict[str, Any] = {"choices": []}
+        start = time.perf_counter()
+        accumulated: dict[str, Any] = {"choices": []}
+        has_yielded = False
 
-        async with self.client.stream(
-            "POST",
-            url=self.cfg.url,
-            headers=self._headers(),
-            json=payload,
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line or not line.startswith("data: "):
-                    continue
+        try:
+            async with self.client.stream(
+                "POST",
+                url=self.cfg.url,
+                headers=self._headers(),
+                json=payload,
+            ) as response:
+                response.raise_for_status()
 
-                raw_data = line[len("data: ") :].strip()
-                if raw_data == "[DONE]":
-                    break
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
 
-                try:
-                    chunk = json.loads(raw_data)
-                except json.JSONDecodeError:
-                    continue
+                    raw = line[len("data: ") :].strip()
+                    if raw == "[DONE]":
+                        break
 
-                for key in ("id", "model", "provider", "usage"):
-                    if key in chunk and chunk[key]:
-                        accumulated_meta[key] = chunk[key]
+                    try:
+                        chunk = json.loads(raw)
+                    except json.JSONDecodeError:
+                        logger.debug("Bỏ qua chunk không parse được: {}", raw[:80])
+                        continue
 
-                choices = chunk.get("choices", [])
-                if choices:
-                    delta = choices[0].get("delta", {})
-                    content_chunk = delta.get("content", "")
-                    if choices[0].get("finish_reason"):
-                        accumulated_meta["choices"] = choices
+                    for key in ("id", "model", "provider", "usage"):
+                        if chunk.get(key):
+                            accumulated[key] = chunk[key]
 
-                    if content_chunk:
-                        yield {"response": content_chunk, "info": None}
+                    choices = chunk.get("choices") or []
+                    if choices:
+                        delta = choices[0].get("delta") or {}
+                        content_chunk = delta.get("content") or ""
+                        if choices[0].get("finish_reason"):
+                            accumulated["choices"] = choices
 
-            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
-            yield {
-                "response": "",
-                "info": self._parse_info(accumulated_meta, elapsed_ms),
-            }
+                        if content_chunk:
+                            has_yielded = True
+                            yield {"response": content_chunk, "info": None}
+
+        except httpx.RequestError as e:
+            if has_yielded:
+                raise LLMStreamError(
+                    f"Stream đứt giữa chừng sau khi đã yield: {e}",
+                    context={"error_type": type(e).__name__},
+                ) from e
+            logger.warning("Stream fail trước khi yield, thử lại 1 lần: {}", e)
+            async for chunk in self.stream_generate(messages, **kwargs):
+                yield chunk
+            return
+
+        if "usage" not in accumulated:
+            logger.warning("Stream kết thúc mà không có usage chunk — metrics có thể = 0")
+
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        yield {
+            "response": "",
+            "info": self._parse_info(accumulated, elapsed_ms),
+        }
 
     async def structured_generate(
         self,
@@ -238,56 +332,230 @@ class LLMClient:
         response_model: type[T],
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Gửi yêu cầu ép kiểu cấu trúc dữ liệu trả về theo Schema của Pydantic Model.
+        """Gọi LLM và ép output khớp Pydantic schema.
+
+        Hỗ trợ 3 mode qua configs.llm.structured_mode:
+            - json_schema: dùng response_format json_schema (chuẩn nhất).
+            - json_object: dùng response_format json_object + prompt schema.
+            - prompt_only: chỉ prompt, tự parse JSON từ text trả về.
 
         Args:
-            messages (list[dict[str, str]]): Lịch sử hội thoại.
-            response_model (type[T]): Lớp Pydantic Model dùng làm khuôn mẫu xác thực dữ liệu.
-            **kwargs (Any): Cấu hình bổ sung.
+            messages: Lịch sử hội thoại.
+            response_model: Pydantic model dùng làm khuôn mẫu.
+            **kwargs: Cấu hình bổ sung.
 
         Returns:
-            dict[str, Any]: Dạng chuẩn gồm 'response' (Pydantic Model) và 'info' (dict).
+            Dict gồm 'response' (Pydantic instance) và 'info'.
+
+        Raises:
+            LLMSchemaError: Khi output không khớp schema sau khi parse.
+            LLMResponseError: Khi không parse được JSON từ output.
         """
-        payload = self._payload(
-            messages,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": response_model.__name__,
-                    "strict": True,
-                    "schema": response_model.model_json_schema(),
+        mode = self.cfg.structured_mode
+
+        if mode == "json_schema":
+            payload = self._payload(
+                messages,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": response_model.__name__,
+                        "strict": True,
+                        "schema": response_model.model_json_schema(),
+                    },
                 },
-            },
-            **kwargs,
-        )
-        start_time = time.perf_counter()
+                include_reasoning=False,
+                **kwargs,
+            )
+        elif mode == "json_object":
+            schema_hint = (
+                f"\n\nBẮT BUỘC trả về JSON hợp lệ khớp schema sau:\n"
+                f"{json.dumps(response_model.model_json_schema(), ensure_ascii=False)}"
+            )
+            messages = self._append_system_hint(messages, schema_hint)
+            payload = self._payload(
+                messages,
+                response_format={"type": "json_object"},
+                include_reasoning=False,
+                **kwargs,
+            )
+        else:  # prompt_only
+            schema_hint = (
+                f"\n\nBẮT BUỘC trả về DUY NHẤT một object JSON (không markdown fence, "
+                f"không giải thích thêm) khớp schema sau:\n"
+                f"{json.dumps(response_model.model_json_schema(), ensure_ascii=False)}"
+            )
+            messages = self._append_system_hint(messages, schema_hint)
+            payload = self._payload(messages, include_reasoning=False, **kwargs)
+
+        start = time.perf_counter()
 
         async def _post() -> dict[str, Any]:
-            response = await self.client.post(
+            resp = await self.client.post(
                 url=self.cfg.url,
                 headers=self._headers(),
                 json=payload,
             )
-            response.raise_for_status()
-            return response.json()
+            resp.raise_for_status()
+            return resp.json()
 
         data = await self._retry(_post)
-        elapsed_ms = int((time.perf_counter() - start_time) * 1000)
-        content = data["choices"][0]["message"]["content"]
-        parsed_response = response_model.model_validate_json(content)
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        content = data["choices"][0]["message"]["content"] or ""
+
+        parsed = self._parse_structured_content(content, response_model)
 
         return {
-            "response": parsed_response,
+            "response": parsed,
             "info": self._parse_info(data, elapsed_ms),
         }
+
+    # --------------------------------------------------------
+    # Helpers
+    # --------------------------------------------------------
+    @staticmethod
+    def _append_system_hint(
+        messages: list[dict[str, str]],
+        hint: str,
+    ) -> list[dict[str, str]]:
+        """Chèn hint vào system message hoặc tạo mới.
+
+        Args:
+            messages: Lịch sử hội thoại gốc.
+            hint: Nội dung cần bổ sung.
+
+        Returns:
+            List messages mới (không mutate list gốc).
+        """
+        new_messages = list(messages)
+        if new_messages and new_messages[0].get("role") == "system":
+            new_messages[0] = {
+                "role": "system",
+                "content": new_messages[0]["content"] + hint,
+            }
+        else:
+            new_messages.insert(0, {"role": "system", "content": hint.strip()})
+        return new_messages
+
+    @staticmethod
+    def _parse_structured_content(content: str, response_model: type[T]) -> T:
+        """Parse content thô thành Pydantic instance với fallback đa tầng.
+
+        Thử theo thứ tự:
+            1. Parse trực tiếp toàn bộ content.
+            2. Strip markdown fence (```json ... ```), parse phần bên trong.
+            3. Extract JSON object bằng brace-balanced scan từ content đã strip fence.
+
+        Args:
+            content: Nội dung text thô từ LLM.
+            response_model: Pydantic model đích.
+
+        Returns:
+            Instance response_model.
+
+        Raises:
+            LLMResponseError: Không extract được JSON.
+            LLMSchemaError: JSON không khớp schema.
+        """
+        candidates: list[str] = []
+
+        stripped = content.strip()
+        if stripped:
+            candidates.append(stripped)
+
+        cleaned = re.sub(r"```(?:json)?\s*", "", content)
+        cleaned = cleaned.replace("```", "").strip()
+
+        if cleaned:
+            candidates.append(cleaned)
+            extracted = _extract_first_json_object(cleaned)
+            if extracted:
+                candidates.append(extracted)
+
+        last_error: Exception | None = None
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                return response_model.model_validate_json(candidate)
+            except (ValidationError, ValueError) as e:
+                last_error = e
+                continue
+
+        if isinstance(last_error, ValidationError):
+            raise LLMSchemaError(
+                f"Output không khớp schema {response_model.__name__}: {last_error}",
+                context={"model": response_model.__name__, "preview": content[:200]},
+            ) from last_error
+        raise LLMResponseError(
+            f"Không extract được JSON cho {response_model.__name__}: {last_error}",
+            context={"model": response_model.__name__, "preview": content[:200]},
+        ) from last_error
+
+def _extract_first_json_object(text: str) -> str | None:
+    """Extract JSON object đầu tiên bằng brace-balanced scan.
+
+    Handle nested object/array + string escape đúng cách.
+
+    Args:
+        text: Chuỗi cần extract.
+
+    Returns:
+        Chuỗi JSON hợp lệ hoặc None nếu không tìm thấy.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escape = False
+
+    for i in range(start, len(text)):
+        ch = text[i]
+
+        if escape:
+            escape = False
+            continue
+
+        if ch == "\\":
+            escape = True
+            continue
+
+        if ch == '"':
+            in_string = not in_string
+            continue
+
+        if in_string:
+            continue
+
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+
+    return None
+
+
+__all__ = ["LLMClient"]
 
 
 if __name__ == "__main__":
     import os
 
     from dotenv import load_dotenv
+    from pydantic import BaseModel, ConfigDict
 
     load_dotenv()
+
+    class PersonInfo(BaseModel):
+        """Schema test cho structured_generate."""
+
+        model_config = ConfigDict(extra="forbid")
+        name: str
+        age: int
 
     async def _test() -> None:
         client = LLMClient(os.environ["OPENROUTER_API_KEY"])
@@ -297,33 +565,25 @@ if __name__ == "__main__":
             print("=== generate ===")
             result = await client.generate(messages)
             print(f"Response: {result['response']}")
-            print(f"Info: {json.dumps(result['info'], indent=2)}")
+            print(f"Info: {json.dumps(result['info'], indent=2, ensure_ascii=False)}")
 
             print("\n=== stream_generate ===")
             async for chunk in client.stream_generate(messages):
                 if chunk["response"]:
                     print(chunk["response"], end="", flush=True)
                 if chunk["info"]:
-                    print(f"\nFinal Stream Info: {json.dumps(chunk['info'], indent=2)}")
+                    print(
+                        f"\nFinal Stream Info: "
+                        f"{json.dumps(chunk['info'], indent=2, ensure_ascii=False)}"
+                    )
 
             print("\n=== structured_generate ===")
-
-            class PersonInfo(BaseModel):
-                model_config = ConfigDict(extra="forbid")
-                name: str
-                age: int
-
-            test_messages = [
-                {
-                    "role": "user",
-                    "content": "Generate a JSON with name John Doe and age 30.",
-                }
-            ]
             structured = await client.structured_generate(
-                test_messages, response_model=PersonInfo
+                [{"role": "user", "content": "Sinh JSON name=John Doe, age=30."}],
+                response_model=PersonInfo,
             )
-            print(f"Response Model: {repr(structured['response'])}")
-            print(f"Info: {json.dumps(structured['info'], indent=2)}")
+            print(f"Response Model: {structured['response']!r}")
+            print(f"Info: {json.dumps(structured['info'], indent=2, ensure_ascii=False)}")
 
         finally:
             await client.aclose()

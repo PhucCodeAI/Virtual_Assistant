@@ -160,7 +160,7 @@ def override_system_prompt(
 
 
 if __name__ == "__main__":
-    path = r"./"
+    path = r"../UI"
 
     folders_to_ignore = [
         ".git",

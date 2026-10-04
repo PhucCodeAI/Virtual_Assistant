@@ -1,14 +1,16 @@
 [llm]
+model="nvidia/nemotron-3-ultra-550b-a55b:free"
 url="https://openrouter.ai/api/v1/chat/completions"
 provider="OpenRouter"
-model="nvidia/nemotron-3-ultra-550b-a55b:free"
 max_retries=2
+timeout_sec = 600
+structured_mode = "json_object"
 
 [logs]
-log_path = "./logs/app/app.log"
-
-[phoenix]
-data_dir = "./logs/phoenix_data"
+log_path = "./logs"
+level = "INFO"
+rotation = "10 MB"
+retention = "7 days"
 
 [server]
 host = "0.0.0.0"
@@ -16,7 +18,10 @@ port = 8000
 cors_origins = ["http://localhost:5173"]
 
 [database]
-db_path = "./storage/database/database.db"
+table_name = "traces"
+
+[storage]
+bucket = "trace-logs"
 
 [embedding]
 url = "https://openrouter.ai/api/v1/embeddings"
@@ -24,12 +29,10 @@ model = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
 batch_size = 32
 max_retries = 2
 concurrency = 8
-
-[vectordb]
-vector_db_path = "./storage/vectordb"
-
-[graphdb]
-graph_db_path = "./storage/graph/graph_db.pkl.gz"
+timeout_sec = 60
 
 [orchestrator]
 workspace_base = "./storage/sandboxes"
+max_retries = 2
+sandbox_image = "python:3.12-slim"
+sandbox_timeout_sec = 30
