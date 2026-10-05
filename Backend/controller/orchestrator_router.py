@@ -32,7 +32,7 @@ _HEARTBEAT_INTERVAL_SEC = 15.0
 _SSE_HEADERS = {
     "Cache-Control": "no-cache, no-transform",
     "Connection": "keep-alive",
-    "X-Accel-Buffering": "no",  # Tắt buffer ở Nginx
+    "X-Accel-Buffering": "no",
     "Content-Type": "text/event-stream; charset=utf-8",
 }
 

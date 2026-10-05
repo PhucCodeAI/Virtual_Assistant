@@ -26,13 +26,13 @@ from controller.trace_router import trace_router
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
+from pipeline.orchestrator import Orchestrator
 from pydantic import BaseModel
 from repositories.storage_repository import StorageRepository
 from repositories.trace_repository import TraceRepository
 from services.embedding_client import EmbeddingClient
 from services.git_service import GitService
 from services.llm_client import LLMClient
-from services.orchestrator import Orchestrator
 from services.sandbox_engine import SandboxEngine
 from services.trace_service import TraceService
 from utils.logger import setup_logging

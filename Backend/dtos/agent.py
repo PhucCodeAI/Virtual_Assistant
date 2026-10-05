@@ -14,7 +14,7 @@ path traversal trước khi chạm tới WorkspaceManager.
 from __future__ import annotations
 
 from pathlib import PurePosixPath
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -285,3 +285,13 @@ if __name__ == "__main__":
         AgentPatchResponse(explanation="x", files=[])
     except ValidationError as e:
         print(f"PASS: {e.errors()[0]['msg']}")
+
+class AgentResult(BaseModel):
+    """Kết quả sau khi agent chạy xong."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    status: str = "SUCCESS"
+    output: dict[str, Any] = {}
+    error: str | None = None

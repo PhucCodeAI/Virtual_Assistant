@@ -15,12 +15,12 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import Depends, Request
+from pipeline.orchestrator import Orchestrator
 from repositories.storage_repository import StorageRepository
 from repositories.trace_repository import TraceRepository
 from services.embedding_client import EmbeddingClient
 from services.git_service import GitService
 from services.llm_client import LLMClient
-from services.orchestrator import Orchestrator
 from services.sandbox_engine import SandboxEngine
 from services.trace_service import TraceService
 

@@ -399,8 +399,7 @@ def _apply_ws_insensitive(
         window = content_lines[start : start + n]
         if [line.rstrip("\r\n").rstrip() for line in window] == old_stripped:
             new_block = new_text
-            if new_text and not new_text.endswith("\n")
-                if window[-1].endswith("\n"):
+            if new_text and not new_text.endswith("\n") and window[-1].endswith("\n"):
                     new_block = new_text + "\n"
 
             prefix = "".join(content_lines[:start])
