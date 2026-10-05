@@ -7,6 +7,8 @@ Cung cấp 3 chế độ gọi mô hình:
     - structured_generate: ép kiểu output theo Pydantic schema với 3 mode
       (json_schema / json_object / prompt_only) để tương thích mọi model.
 
+Điều khiển reasoning effort qua params
+
 Exception sử dụng từ package `exceptions` — không định nghĩa inline.
 """
 
@@ -74,6 +76,7 @@ class LLMClient:
     def _payload(
         self,
         messages: list[dict[str, str]],
+        reasoning: str,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Đóng gói payload gửi lên model.
@@ -83,15 +86,31 @@ class LLMClient:
             **kwargs: Tham số tinh chỉnh bổ sung.
 
         Returns:
-            Payload JSON đã chuẩn hóa (loại bỏ reserved key khỏi kwargs).
+            Payload JSON đã chuẩn hóa.
         """
-        reserved = {"model", "messages", "stream", "stream_options", "response_format"}
+        reserved = {
+            "model",
+            "messages",
+            "stream",
+            "stream_options",
+            "response_format",
+            "temperature",
+            "top_p",
+            "max_tokens",
+            "reasoning",
+        }
         safe_kwargs = {k: v for k, v in kwargs.items() if k not in reserved}
-        return {
+
+        payload: dict[str, Any] = {
             "model": self.cfg.model,
             "messages": messages,
-            **safe_kwargs,
         }
+
+        if reasoning is not None:
+            payload["reasoning"] = {"effort": reasoning}
+
+        payload.update(safe_kwargs)
+        return payload
 
     # --------------------------------------------------------
     # Retry
@@ -206,6 +225,7 @@ class LLMClient:
     async def generate(
         self,
         messages: list[dict[str, str]],
+        reasoning: str | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Gọi LLM ở chế độ non-stream.
@@ -217,7 +237,7 @@ class LLMClient:
         Returns:
             Dict gồm 'response' (str) và 'info' (dict).
         """
-        payload = self._payload(messages, **kwargs)
+        payload = self._payload(messages, reasoning, **kwargs)
         start = time.perf_counter()
 
         async def _post() -> dict[str, Any]:
@@ -231,7 +251,7 @@ class LLMClient:
 
         data = await self._retry(_post)
         elapsed_ms = int((time.perf_counter() - start) * 1000)
-        content = data["choices"][0]["message"]["content"] or ""
+        content = _extract_content(data)
 
         return {
             "response": content,
@@ -241,6 +261,7 @@ class LLMClient:
     async def stream_generate(
         self,
         messages: list[dict[str, str]],
+        reasoning: str | None = None,
         **kwargs: Any,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Gọi LLM ở chế độ stream (SSE).
@@ -260,6 +281,7 @@ class LLMClient:
         """
         payload = self._payload(
             messages,
+            reasoning,
             stream=True,
             stream_options={"include_usage": True},
             **kwargs,
@@ -330,6 +352,7 @@ class LLMClient:
         self,
         messages: list[dict[str, str]],
         response_model: type[T],
+        reasoning: str | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Gọi LLM và ép output khớp Pydantic schema.
@@ -349,13 +372,14 @@ class LLMClient:
 
         Raises:
             LLMSchemaError: Khi output không khớp schema sau khi parse.
-            LLMResponseError: Khi không parse được JSON từ output.
+            LLMResponseError: Khi không parse được JSON hoặc response rỗng.
         """
         mode = self.cfg.structured_mode
 
         if mode == "json_schema":
             payload = self._payload(
                 messages,
+                reasoning,
                 response_format={
                     "type": "json_schema",
                     "json_schema": {
@@ -364,7 +388,6 @@ class LLMClient:
                         "schema": response_model.model_json_schema(),
                     },
                 },
-                include_reasoning=False,
                 **kwargs,
             )
         elif mode == "json_object":
@@ -375,18 +398,18 @@ class LLMClient:
             messages = self._append_system_hint(messages, schema_hint)
             payload = self._payload(
                 messages,
+                reasoning,
                 response_format={"type": "json_object"},
-                include_reasoning=False,
                 **kwargs,
             )
-        else:  # prompt_only
+        else: 
             schema_hint = (
                 f"\n\nBẮT BUỘC trả về DUY NHẤT một object JSON (không markdown fence, "
                 f"không giải thích thêm) khớp schema sau:\n"
                 f"{json.dumps(response_model.model_json_schema(), ensure_ascii=False)}"
             )
             messages = self._append_system_hint(messages, schema_hint)
-            payload = self._payload(messages, include_reasoning=False, **kwargs)
+            payload = self._payload(messages, reasoning, **kwargs)
 
         start = time.perf_counter()
 
@@ -401,7 +424,15 @@ class LLMClient:
 
         data = await self._retry(_post)
         elapsed_ms = int((time.perf_counter() - start) * 1000)
-        content = data["choices"][0]["message"]["content"] or ""
+        content = _extract_content(data)
+
+        finish_reason = (data.get("choices") or [{}])[0].get("finish_reason")
+        if finish_reason == "length":
+            raise LLMResponseError(
+                "Response bị cắt do vượt max_tokens (finish_reason=length). "
+                "Tăng max_tokens hoặc giảm độ phức tạp prompt.",
+                context={"model": self.cfg.model, "preview": content[:300]},
+            )
 
         parsed = self._parse_structured_content(content, response_model)
 
@@ -444,7 +475,7 @@ class LLMClient:
         Thử theo thứ tự:
             1. Parse trực tiếp toàn bộ content.
             2. Strip markdown fence (```json ... ```), parse phần bên trong.
-            3. Extract JSON object bằng brace-balanced scan từ content đã strip fence.
+            3. Extract JSON object bằng brace-balanced scan.
 
         Args:
             content: Nội dung text thô từ LLM.
@@ -491,6 +522,45 @@ class LLMClient:
             f"Không extract được JSON cho {response_model.__name__}: {last_error}",
             context={"model": response_model.__name__, "preview": content[:200]},
         ) from last_error
+
+
+# ============================================================
+# Module-level helpers
+# ============================================================
+def _extract_content(data: dict[str, Any]) -> str:
+    """Trích xuất content từ response OpenRouter, defensive.
+
+    OpenRouter có thể trả HTTP 200 với body error (không có 'choices')
+    khi upstream provider fail. Hàm này raise LLMResponseError rõ ràng
+    thay vì để KeyError lan ra.
+
+    Args:
+        data: JSON response từ API.
+
+    Returns:
+        Content string (có thể rỗng).
+
+    Raises:
+        LLMResponseError: Khi response thiếu 'choices' hoặc structure sai.
+    """
+    if data.get("error"):
+        err = data["error"]
+        msg = err.get("message") if isinstance(err, dict) else str(err)
+        raise LLMResponseError(
+            f"OpenRouter trả lỗi: {msg}",
+            context={"error": err, "raw_keys": list(data.keys())},
+        )
+
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise LLMResponseError(
+            "Response thiếu 'choices' — có thể upstream provider fail",
+            context={"raw_keys": list(data.keys()), "preview": str(data)[:300]},
+        )
+
+    message = choices[0].get("message") or {}
+    content = message.get("content")
+    return content or ""
 
 def _extract_first_json_object(text: str) -> str | None:
     """Extract JSON object đầu tiên bằng brace-balanced scan.

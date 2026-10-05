@@ -1,8 +1,6 @@
 # Backend/agents/coder.py
-"""Agent sinh mã + chạy test + retry tự sửa lỗi.
-
-Đây là logic được extract từ `services/orchestrator.py` cũ.
-Behavior giữ nguyên 100% — chỉ đổi chỗ ở.
+"""
+Agent viết code
 """
 
 from __future__ import annotations
@@ -24,7 +22,6 @@ from dtos.orchestrator import (
     StatusStep,
     format_sse,
 )
-from exceptions import AppError, EditApplyError
 from loguru import logger
 from pipeline.context import PipelineContext
 from services.git_service import GitService
